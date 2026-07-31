@@ -7,3 +7,4 @@ mapbox-earcut==2.0.0
 streamlit==1.60.0
 plotly==5.24.1
 pillow==12.3.0
+networkx==3.6.1

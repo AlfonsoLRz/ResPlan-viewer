@@ -26,6 +26,9 @@ python -m pip install -e .
 `requirements.txt` is the pinned CLI/viewer runtime used for deployment. The
 larger notebook, graph, and ML toolchain is intentionally separate in
 `requirements-dataset.txt` and is not required by the extruder.
+NetworkX is part of the minimal runtime because `ResPlan.pkl` contains
+serialized NetworkX graph objects, even though extrusion itself only consumes
+the plan geometry.
 
 The editable installation provides `resplan-extrude` and `resplan-viewer`.
 Some Windows Python installations do not place their `Scripts` directory on

@@ -28,7 +28,8 @@ larger notebook, graph, and ML toolchain is intentionally separate in
 `requirements-dataset.txt` and is not required by the extruder.
 NetworkX is part of the minimal runtime because `ResPlan.pkl` contains
 serialized NetworkX graph objects, even though extrusion itself only consumes
-the plan geometry.
+the plan geometry. SciPy is also required by Trimesh's colour-preserving GLB
+export path.
 
 The editable installation provides `resplan-extrude` and `resplan-viewer`.
 Some Windows Python installations do not place their `Scripts` directory on
@@ -458,8 +459,10 @@ appropriate authentication, TLS, and network controls.
 
 ### Viewer controls
 
-The plan selector remains visible at the top. Less common controls are grouped
-into collapsible sidebar panels:
+The plan selector remains visible at the top. IDs are sorted numerically, its
+drop-down has a persistent draggable scrollbar, and **Previous**/**Next**
+buttons provide stepwise navigation. Less common controls are grouped into
+collapsible sidebar panels:
 
 - **Dataset** changes the local pickle path and, when that file is absent, the
   verified download URL.

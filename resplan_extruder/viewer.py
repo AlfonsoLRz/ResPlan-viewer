@@ -85,6 +85,25 @@ def _deployment_setting(name: str, default: str) -> str:
     return str(secret or os.environ.get(name) or default)
 
 
+def _plan_id_sort_key(plan_id: Any) -> tuple[int, Any]:
+    """Sort numeric dataset IDs numerically, with a text fallback."""
+    text = str(plan_id)
+    try:
+        return (0, int(text))
+    except ValueError:
+        return (1, text.casefold())
+
+
+def _move_plan(offset: int, plan_ids: list[str]) -> None:
+    current = str(st.session_state.get("selected_plan_id", plan_ids[0]))
+    try:
+        position = plan_ids.index(current)
+    except ValueError:
+        position = 0
+    new_position = min(max(position + offset, 0), len(plan_ids) - 1)
+    st.session_state["selected_plan_id"] = plan_ids[new_position]
+
+
 def _polygons(geometry: BaseGeometry | None) -> Iterable[Polygon]:
     if geometry is None or geometry.is_empty:
         return
@@ -180,6 +199,32 @@ def mesh_figure(result: Any, show_ceiling: bool) -> go.Figure:
 
 def main() -> None:
     st.set_page_config(page_title="ResPlan Extruder", layout="wide")
+    st.markdown(
+        """
+        <style>
+        div[data-baseweb="popover"] [role="listbox"] {
+            max-height: min(60vh, 34rem) !important;
+            overflow-y: scroll !important;
+            scrollbar-gutter: stable;
+            scrollbar-width: auto;
+            scrollbar-color: #737373 #e6e6e6;
+        }
+        div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar {
+            display: block;
+            width: 13px;
+        }
+        div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-track {
+            background: #e6e6e6;
+        }
+        div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb {
+            background: #737373;
+            border: 3px solid #e6e6e6;
+            border-radius: 8px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.title("ResPlan Floor-Plan Extruder")
     st.caption("Inspect source vectors, tune metric dimensions, and export OBJ or GLB.")
 
@@ -216,8 +261,29 @@ def main() -> None:
         st.stop()
 
     index = {str(plan.get("id")): plan for plan in plans}
-    plan_ids = list(index)
-    selected_id = st.sidebar.selectbox("Plan ID", options=plan_ids)
+    plan_ids = sorted(index, key=_plan_id_sort_key)
+    selected_id = st.sidebar.selectbox(
+        "Plan ID", options=plan_ids, key="selected_plan_id"
+    )
+    previous_plan, next_plan = st.sidebar.columns(2)
+    selected_position = plan_ids.index(selected_id)
+    previous_plan.button(
+        "Previous",
+        on_click=_move_plan,
+        args=(-1, plan_ids),
+        disabled=selected_position == 0,
+        use_container_width=True,
+    )
+    next_plan.button(
+        "Next",
+        on_click=_move_plan,
+        args=(1, plan_ids),
+        disabled=selected_position == len(plan_ids) - 1,
+        use_container_width=True,
+    )
+    st.sidebar.caption(
+        f"Plan {selected_position + 1:,} of {len(plan_ids):,} · IDs sorted numerically"
+    )
     plan = index[selected_id]
 
     with st.sidebar.expander("Structure", expanded=True):
@@ -493,7 +559,12 @@ def main() -> None:
         )
 
     obj_data = export_bytes(result, "obj")
-    glb_data = export_bytes(result, "glb")
+    try:
+        glb_data = export_bytes(result, "glb")
+        glb_error = None
+    except Exception as exc:
+        glb_data = None
+        glb_error = exc
     download_obj, download_glb, details = st.columns([1, 1, 2])
     with download_obj:
         st.download_button(
@@ -504,13 +575,16 @@ def main() -> None:
             use_container_width=True,
         )
     with download_glb:
-        st.download_button(
-            "Download GLB",
-            data=glb_data,
-            file_name=f"resplan_{selected_id}.glb",
-            mime="model/gltf-binary",
-            use_container_width=True,
-        )
+        if glb_data is None:
+            st.button("Download GLB", disabled=True, use_container_width=True)
+        else:
+            st.download_button(
+                "Download GLB",
+                data=glb_data,
+                file_name=f"resplan_{selected_id}.glb",
+                mime="model/gltf-binary",
+                use_container_width=True,
+            )
     with details:
         st.json(
             {
@@ -523,6 +597,11 @@ def main() -> None:
                 "geometry_variations": result.geometry_variations,
             },
             expanded=False,
+        )
+    if glb_error is not None:
+        st.warning(
+            "GLB export is temporarily unavailable; OBJ export and previews "
+            "still work. Check the application logs for the export error."
         )
 
 

@@ -216,3 +216,16 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ResPlan local data and generated models
+/ResPlan.pkl
+/exports/
+/smoke_exports/
+*.obj
+*.glb
+*.stl
+*.ply
+
+# Batch manifests and temporary export staging
+/manifest.json
+*.tmp

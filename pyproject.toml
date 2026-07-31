@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "resplan-extruder"
+version = "0.1.0"
+description = "Batch and interactive 3D extrusion tools for the ResPlan dataset"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "shapely>=2.0.0",
+    "trimesh>=4.0.0",
+    "mapbox-earcut>=1.0.1",
+    "streamlit>=1.30.0",
+    "plotly>=5.18.0",
+    "numpy>=1.24.0",
+]
+
+[project.scripts]
+resplan-extrude = "resplan_extruder.cli:main"
+resplan-viewer = "resplan_extruder.launcher:main"
+
+[tool.setuptools.packages.find]
+include = ["resplan_extruder*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,8 @@
+# ResPlan extruder CLI and Streamlit viewer runtime.
+# Exported from the tested environment on 2026-07-31.
+numpy==1.26.4
+shapely==2.1.2
+trimesh==4.12.2
+mapbox-earcut==2.0.0
+streamlit==1.37.1
+plotly==5.24.1

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import os
 from pathlib import Path
 import secrets
+import tempfile
 from typing import Any, Iterable
 
 import numpy as np
@@ -19,7 +21,12 @@ from resplan_extruder.core import (
     extrude_plan,
 )
 from resplan_extruder.exporters import export_bytes
-from resplan_extruder.loader import load_dataset
+from resplan_extruder.loader import (
+    DEFAULT_DATASET_SHA256,
+    DEFAULT_DATASET_URL,
+    ensure_dataset,
+    load_dataset,
+)
 
 
 PLAN_COLORS = {
@@ -55,9 +62,19 @@ def _pick_geometry_seed() -> None:
     st.session_state["geometry_seed"] = candidate
 
 
-@st.cache_resource(show_spinner="Loading the ResPlan dataset…")
-def _load(path: str) -> list[dict[str, Any]]:
-    return load_dataset(path)
+@st.cache_resource(show_spinner=False)
+def _load(path: str, url: str, sha256: str) -> list[dict[str, Any]]:
+    dataset_path = ensure_dataset(path, url=url or None, sha256=sha256 or None)
+    return load_dataset(dataset_path)
+
+
+def _deployment_setting(name: str, default: str) -> str:
+    """Read an optional Streamlit secret, then an environment variable."""
+    try:
+        secret = st.secrets.get(name)
+    except Exception:
+        secret = None
+    return str(secret or os.environ.get(name) or default)
 
 
 def _polygons(geometry: BaseGeometry | None) -> Iterable[Polygon]:
@@ -158,13 +175,36 @@ def main() -> None:
     st.title("ResPlan Floor-Plan Extruder")
     st.caption("Inspect source vectors, tune metric dimensions, and export OBJ or GLB.")
 
-    default_data = str(Path.cwd() / "ResPlan.pkl")
+    local_data = Path.cwd() / "ResPlan.pkl"
+    default_data = (
+        local_data
+        if local_data.is_file()
+        else Path(tempfile.gettempdir()) / "resplan-viewer" / "ResPlan.pkl"
+    )
+    default_url = _deployment_setting("RESPLAN_DATA_URL", DEFAULT_DATASET_URL)
+    default_sha256 = _deployment_setting(
+        "RESPLAN_DATA_SHA256", DEFAULT_DATASET_SHA256
+    )
     with st.sidebar.expander("Dataset", expanded=False):
-        data_path = st.text_input("Dataset path", value=default_data)
+        data_path = st.text_input("Dataset path", value=str(default_data))
+        data_url = st.text_input(
+            "Download URL (used only when path is missing)", value=default_url
+        )
+        data_sha256 = st.text_input(
+            "Expected SHA-256", value=default_sha256, type="password"
+        )
+        if not Path(data_path).expanduser().is_file():
+            st.caption("The dataset will be downloaded once and cached locally.")
     try:
-        plans = _load(data_path)
+        with st.spinner("Obtaining and loading the ResPlan dataset…"):
+            plans = _load(data_path, data_url.strip(), data_sha256.strip())
     except Exception as exc:
         st.error(f"Could not load dataset: {exc}")
+        st.info(
+            "For Streamlit Cloud, attach ResPlan.pkl to a GitHub Release, or "
+            "set RESPLAN_DATA_URL and RESPLAN_DATA_SHA256 in the app's Secrets. "
+            "The release asset itself must be named ResPlan.pkl."
+        )
         st.stop()
 
     index = {str(plan.get("id")): plan for plan in plans}

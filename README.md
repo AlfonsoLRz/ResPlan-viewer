@@ -127,6 +127,10 @@ For an interactive 2D/3D preview with OBJ and GLB downloads:
 resplan-viewer
 ```
 
+For Streamlit Cloud, the 300 MB pickle stays out of Git and is downloaded from
+a verified GitHub Release asset (or a configurable direct URL). See the
+[web deployment instructions](EXTRUDER_README.md#web-deployment).
+
 If your Python `Scripts` directory is not on `PATH`, use the equivalent module
 commands:
 

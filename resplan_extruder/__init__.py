@@ -2,7 +2,7 @@
 
 from .core import ExtrusionOptions, ExtrusionResult, extrude_plan
 from .exporters import export_bytes, export_plan
-from .loader import load_dataset, load_splits, select_plans
+from .loader import ensure_dataset, load_dataset, load_splits, select_plans
 
 __all__ = [
     "ExtrusionOptions",
@@ -10,6 +10,7 @@ __all__ = [
     "extrude_plan",
     "export_bytes",
     "export_plan",
+    "ensure_dataset",
     "load_dataset",
     "load_splits",
     "select_plans",

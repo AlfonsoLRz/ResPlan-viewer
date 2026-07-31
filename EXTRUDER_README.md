@@ -458,7 +458,8 @@ appropriate authentication, TLS, and network controls.
 The plan selector remains visible at the top. Less common controls are grouped
 into collapsible sidebar panels:
 
-- **Dataset** changes the pickle path.
+- **Dataset** changes the local pickle path and, when that file is absent, the
+  verified download URL.
 - **Structure** contains wall/floor dimensions, balcony floor, and ceiling.
 - **Doors and windows** contains opening treatment and heights.
 - **Robotics access** contains boundary closure and restricted-door controls.
@@ -531,15 +532,60 @@ Two deployment approaches are suitable:
    that can run Streamlit.
 
 `ResPlan.pkl` is approximately 300 MB, above GitHub's normal 100 MiB per-file
-limit. Store it with Git LFS or in external object storage and make it available
-to the application at startup. Git LFS cannot serve the dataset through GitHub
-Pages.
+limit. It therefore remains excluded by `.gitignore`. The viewer can download
+the file at startup, verify its SHA-256, and cache it in the Streamlit runtime.
+
+### Streamlit Community Cloud with a GitHub Release
+
+The simplest public deployment is a GitHub Release asset. Release assets are
+separate from the Git repository's 100 MiB file limit.
+
+1. In the GitHub repository, create a release and attach the trusted local
+   `ResPlan.pkl` file. Keep the asset name exactly `ResPlan.pkl`.
+2. Push this code and deploy `resplan_extruder/viewer.py` in Streamlit
+   Community Cloud. `requirements.txt` contains Python 3.14-compatible binary
+   dependencies.
+3. On first startup, the viewer uses this stable latest-release URL:
+
+   ```text
+   https://github.com/AlfonsoLRz/ResPlan-viewer/releases/latest/download/ResPlan.pkl
+   ```
+
+   It verifies the download against the built-in SHA-256:
+
+   ```text
+   2a73179cf11e6066384400494683072eb1648ed56ae000750d0e9f3fa499c570
+   ```
+
+Do not publish the dataset until its redistribution license has been checked.
+The code license and dataset license are separate concerns.
+
+### Custom storage or Kaggle
+
+Set these values in the Streamlit app's **Settings > Secrets** to override the
+default release asset without changing code:
+
+```toml
+RESPLAN_DATA_URL = "https://example.org/path/ResPlan.pkl"
+RESPLAN_DATA_SHA256 = "2a73179cf11e6066384400494683072eb1648ed56ae000750d0e9f3fa499c570"
+```
+
+The URL must return the pickle bytes directly. A normal Kaggle dataset page or
+login redirect is not sufficient. A private Kaggle download would require an
+authenticated downloader and Kaggle credentials stored as Streamlit secrets;
+for a public app, a public GitHub Release asset or object-storage URL is much
+simpler and avoids distributing account credentials.
+
+The cached file is ephemeral: Streamlit may download it again after an app
+restart or migration. Existing local dataset files are never overwritten, and
+a failed or mismatched download is removed before unpickling.
 
 Useful references:
 
 - [Streamlit Community Cloud deployment](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/deploy)
 - [GitHub Actions deployments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/control-deployments)
 - [GitHub large-file limits](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files)
+- [GitHub release assets](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases)
 
 ## Troubleshooting
 

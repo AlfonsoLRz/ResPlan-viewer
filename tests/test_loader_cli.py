@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import pickle
 
 from resplan_extruder.cli import run
-from resplan_extruder.loader import select_plans
+from resplan_extruder.loader import ensure_dataset, load_dataset, select_plans
 
 from .test_core import synthetic_plan
 
@@ -21,6 +22,48 @@ def test_select_by_ids_split_all_and_limit() -> None:
     assert [
         p["id"] for p in select_plans(plans, all_plans=True, limit=2)
     ] == [3, 1]
+
+
+def test_ensure_dataset_downloads_and_verifies(tmp_path) -> None:
+    source = tmp_path / "source.pkl"
+    destination = tmp_path / "cache" / "ResPlan.pkl"
+    payload = pickle.dumps([{"id": 7}])
+    source.write_bytes(payload)
+
+    result = ensure_dataset(
+        destination,
+        url=source.as_uri(),
+        sha256=hashlib.sha256(payload).hexdigest(),
+    )
+
+    assert result == destination
+    assert load_dataset(result) == [{"id": 7}]
+
+
+def test_ensure_dataset_rejects_bad_checksum_without_partial_file(tmp_path) -> None:
+    source = tmp_path / "source.pkl"
+    destination = tmp_path / "cache" / "ResPlan.pkl"
+    source.write_bytes(pickle.dumps([{"id": 8}]))
+
+    try:
+        ensure_dataset(destination, url=source.as_uri(), sha256="0" * 64)
+    except ValueError as exc:
+        assert "checksum mismatch" in str(exc)
+    else:
+        raise AssertionError("a bad dataset checksum was accepted")
+
+    assert not destination.exists()
+    assert not list(destination.parent.glob("*.download"))
+
+
+def test_ensure_dataset_keeps_existing_local_file(tmp_path) -> None:
+    destination = tmp_path / "ResPlan.pkl"
+    destination.write_bytes(b"local")
+    assert (
+        ensure_dataset(destination, url="https://invalid.example/data")
+        == destination
+    )
+    assert destination.read_bytes() == b"local"
 
 
 def test_cli_single_and_both_formats(tmp_path) -> None:

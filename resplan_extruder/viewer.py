@@ -6,8 +6,16 @@ from dataclasses import asdict
 import os
 from pathlib import Path
 import secrets
+import sys
 import tempfile
 from typing import Any, Iterable
+
+# Streamlit Community Cloud may execute this file with only its containing
+# directory on sys.path. Add the repository root before importing the package.
+if __package__ in (None, ""):
+    repository_root = str(Path(__file__).resolve().parent.parent)
+    if repository_root not in sys.path:
+        sys.path.insert(0, repository_root)
 
 import numpy as np
 import plotly.graph_objects as go
@@ -518,4 +526,5 @@ def main() -> None:
         )
 
 
-main()
+if __name__ == "__main__":
+    main()

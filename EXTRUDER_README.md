@@ -421,7 +421,7 @@ timestamps, successes, failures, warnings, and artifact paths.
 Launch the interactive viewer from the repository root:
 
 ```powershell
-python -m streamlit run resplan_extruder/viewer.py
+python -m streamlit run streamlit_app.py
 ```
 
 If the installed script is on `PATH`, this is equivalent:
@@ -439,13 +439,13 @@ http://localhost:8501
 Use a different port:
 
 ```powershell
-python -m streamlit run resplan_extruder/viewer.py --server.port 8502
+python -m streamlit run streamlit_app.py --server.port 8502
 ```
 
 To listen on all interfaces for a LAN or container deployment:
 
 ```powershell
-python -m streamlit run resplan_extruder/viewer.py `
+python -m streamlit run streamlit_app.py `
   --server.address 0.0.0.0 `
   --server.port 8501
 ```
@@ -542,7 +542,7 @@ separate from the Git repository's 100 MiB file limit.
 
 1. In the GitHub repository, create a release and attach the trusted local
    `ResPlan.pkl` file. Keep the asset name exactly `ResPlan.pkl`.
-2. Push this code and deploy `resplan_extruder/viewer.py` in Streamlit
+2. Push this code and deploy `streamlit_app.py` in Streamlit
    Community Cloud. `requirements.txt` contains Python 3.14-compatible binary
    dependencies.
 3. On first startup, the viewer uses this stable latest-release URL:
@@ -595,7 +595,7 @@ Use the module form if `resplan-extrude` or `resplan-viewer` is not on `PATH`:
 
 ```powershell
 python -m resplan_extruder.cli --help
-python -m streamlit run resplan_extruder/viewer.py
+python -m streamlit run streamlit_app.py
 ```
 
 ### Dataset not found

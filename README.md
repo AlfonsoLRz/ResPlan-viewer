@@ -136,7 +136,7 @@ commands:
 
 ```bash
 python -m resplan_extruder.cli --ids 14433,14926 --output exports
-python -m streamlit run resplan_extruder/viewer.py
+python -m streamlit run streamlit_app.py
 ```
 
 Ceilings and seeded geometry variations are optional and disabled by default.

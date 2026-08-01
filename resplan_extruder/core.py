@@ -16,6 +16,7 @@ from shapely.geometry import (
     MultiPolygon,
     Point,
     Polygon,
+    box,
 )
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
@@ -57,7 +58,9 @@ class ExtrusionOptions:
     door_mode: str = "lintel"
     close_boundary_doors: bool = False
     restricted_door_count: int = 0
+    restricted_door_mode: str = "height"
     restricted_door_height: float = 1.00
+    restricted_door_width: float = 0.40
     restricted_door_seed: int = 0
     window_sill_height: float = 0.90
     window_head_height: float = 2.10
@@ -115,6 +118,10 @@ class ExtrusionOptions:
             raise ValueError("door_mode must be 'lintel' or 'full-height'")
         if self.window_mode not in {"opening", "solid"}:
             raise ValueError("window_mode must be 'opening' or 'solid'")
+        if self.restricted_door_mode not in {"height", "width", "both"}:
+            raise ValueError(
+                "restricted_door_mode must be 'height', 'width', or 'both'"
+            )
         if (
             isinstance(self.restricted_door_count, bool)
             or not isinstance(self.restricted_door_count, (int, np.integer))
@@ -133,13 +140,28 @@ class ExtrusionOptions:
             or self.geometry_seed < 0
         ):
             raise ValueError("geometry_seed must be an integer >= 0")
-        if self.restricted_door_count > 0 and (
-            not math.isfinite(self.restricted_door_height)
-            or not 0 <= self.restricted_door_height < self.wall_height
+        if (
+            self.restricted_door_count > 0
+            and self.restricted_door_mode in {"height", "both"}
+            and (
+                not math.isfinite(self.restricted_door_height)
+                or not 0 <= self.restricted_door_height < self.wall_height
+            )
         ):
             raise ValueError(
                 "restricted_door_height must satisfy "
                 "0 <= restricted_door_height < wall_height"
+            )
+        if (
+            self.restricted_door_count > 0
+            and self.restricted_door_mode in {"width", "both"}
+            and (
+                not math.isfinite(self.restricted_door_width)
+                or self.restricted_door_width <= 0
+            )
+        ):
+            raise ValueError(
+                "restricted_door_width must be a finite number greater than zero"
             )
         if self.door_mode == "lintel" and (
             not math.isfinite(self.door_height)
@@ -392,6 +414,79 @@ def _resize_wall_sections(
     if not resized:
         return GeometryCollection()
     return set_precision(_union(resized), grid_size=GEOMETRY_GRID_SIZE)
+
+
+def _narrow_door_openings(
+    geometry: BaseGeometry,
+    target_width: float,
+    warnings: list[str],
+) -> tuple[BaseGeometry, list[dict[str, float]]]:
+    """Clip each door along its long axis to a centred metric opening."""
+    narrowed: list[BaseGeometry] = []
+    widths: list[dict[str, float]] = []
+    unchanged_count = 0
+    for polygon in _sorted_polygons(geometry):
+        rectangle = polygon.minimum_rotated_rectangle
+        coordinates = list(rectangle.exterior.coords)[:4]
+        if len(coordinates) < 4:
+            continue
+        edge_lengths = [
+            math.hypot(
+                coordinates[(index + 1) % 4][0] - coordinates[index][0],
+                coordinates[(index + 1) % 4][1] - coordinates[index][1],
+            )
+            for index in range(4)
+        ]
+        longest_index = max(range(4), key=edge_lengths.__getitem__)
+        original_width = edge_lengths[longest_index]
+        effective_width = min(target_width, original_width)
+        widths.append(
+            {
+                "original_width_m": float(original_width),
+                "effective_width_m": float(effective_width),
+            }
+        )
+        if target_width >= original_width - GEOMETRY_GRID_SIZE:
+            narrowed.append(polygon)
+            unchanged_count += 1
+            continue
+
+        start = coordinates[longest_index]
+        end = coordinates[(longest_index + 1) % 4]
+        angle = math.atan2(end[1] - start[1], end[0] - start[0])
+        center = (polygon.centroid.x, polygon.centroid.y)
+        aligned = affinity.rotate(
+            polygon, -angle, origin=center, use_radians=True
+        )
+        _, min_y, _, max_y = aligned.bounds
+        margin = max(original_width, max_y - min_y, target_width, 1.0)
+        clip = box(
+            center[0] - target_width / 2.0,
+            min_y - margin,
+            center[0] + target_width / 2.0,
+            max_y + margin,
+        )
+        clipped = aligned.intersection(clip)
+        if clipped.is_empty:
+            warnings.append("restricted door: width clipping produced no opening")
+            continue
+        narrowed.append(
+            affinity.rotate(
+                clipped, angle, origin=center, use_radians=True
+            )
+        )
+
+    if unchanged_count:
+        warnings.append(
+            "restricted doors: requested width was not smaller than "
+            f"{unchanged_count} selected opening(s); those openings were unchanged"
+        )
+    if not narrowed:
+        return GeometryCollection(), widths
+    return (
+        set_precision(_union(narrowed), grid_size=GEOMETRY_GRID_SIZE),
+        widths,
+    )
 
 
 def _variation_seed(plan_id: int | str, seed: int, label: str) -> int:
@@ -1350,13 +1445,6 @@ def extrude_plan(
     normal_doors = _union(normal_door_parts)
     restricted_doors = _union(restricted_door_parts)
     closed_boundary_doors = _union(closed_boundary_parts)
-    open_doors = _union((normal_doors, restricted_doors))
-
-    wall_openings = (
-        _union((open_doors, cleaned["window"]))
-        if options.window_mode == "opening"
-        else open_doors
-    )
     # Door and window polygons occupy gaps in the source wall layer. Rebuild
     # the complete wall band before changing its thickness, then cut the
     # selected openings back out. Shrinking disconnected wall fragments
@@ -1398,16 +1486,42 @@ def extrude_plan(
         name: _transform(value, scale_factor, source_center)
         for name, value in geometry.items()
     }
+    geometry["door_lintels"] = _resize_wall_sections(
+        geometry["door_lintels"], options.wall_thickness
+    )
+    restricted_full_openings = _resize_wall_sections(
+        geometry["restricted_door_lintels"], options.wall_thickness
+    )
+    restricted_widths: list[dict[str, float]] = []
+    if options.restricted_door_mode in {"width", "both"}:
+        restricted_openings, restricted_widths = _narrow_door_openings(
+            restricted_full_openings,
+            options.restricted_door_width,
+            warnings,
+        )
+    else:
+        restricted_openings = restricted_full_openings
+    geometry["restricted_door_lintels"] = restricted_openings
+    geometry["window_sills"] = _resize_wall_sections(
+        geometry["window_sills"], options.wall_thickness
+    )
+    geometry["window_headers"] = geometry["window_sills"]
+
+    metric_wall_openings = _union(
+        (
+            geometry["door_lintels"],
+            restricted_openings,
+            geometry["window_sills"]
+            if options.window_mode == "opening"
+            else GeometryCollection(),
+        )
+    )
     metric_wall_band = _resize_wall_body(
         _transform(
             structural_wall_band, scale_factor, source_center
         ),
         options.wall_thickness,
         warnings,
-    )
-    metric_wall_openings = _resize_wall_sections(
-        _transform(wall_openings, scale_factor, source_center),
-        options.wall_thickness,
     )
     protected_sections = _resize_wall_sections(
         _transform(
@@ -1448,16 +1562,6 @@ def extrude_plan(
     geometry["walls"] = _drop_tiny_holes(
         metric_wall_band.difference(metric_wall_openings)
     )
-    for name in (
-        "door_lintels",
-        "restricted_door_lintels",
-        "window_sills",
-        "window_headers",
-    ):
-        geometry[name] = _resize_wall_sections(
-            geometry[name], options.wall_thickness
-        )
-
     metric_recentering = (0.0, 0.0)
     if options.center and geometry_variations["enabled"]:
         varied_min_x, varied_min_y, varied_max_x, varied_max_y = geometry[
@@ -1488,7 +1592,9 @@ def extrude_plan(
         "walls": (0.0, options.wall_height),
         "door_lintels": (options.door_height, options.wall_height),
         "restricted_door_lintels": (
-            options.restricted_door_height,
+            options.restricted_door_height
+            if options.restricted_door_mode in {"height", "both"}
+            else options.door_height,
             options.wall_height,
         ),
         "window_sills": (0.0, options.window_sill_height),
@@ -1503,6 +1609,12 @@ def extrude_plan(
         if name == "ceiling" and not options.ceiling:
             continue
         if name == "door_lintels" and options.door_mode == "full-height":
+            continue
+        if (
+            name == "restricted_door_lintels"
+            and options.door_mode == "full-height"
+            and options.restricted_door_mode == "width"
+        ):
             continue
         if (
             name in {"window_sills", "window_headers"}
@@ -1540,12 +1652,21 @@ def extrude_plan(
     door_treatments = {
         "normal_count": len(normal_door_parts),
         "restricted_count": len(restricted_door_parts),
+        "restricted_mode": options.restricted_door_mode,
         "restricted_candidate_count": len(restricted_candidates),
         "restricted_height_m": (
             options.restricted_door_height
             if restricted_door_parts
+            and options.restricted_door_mode in {"height", "both"}
             else None
         ),
+        "restricted_width_m": (
+            options.restricted_door_width
+            if restricted_door_parts
+            and options.restricted_door_mode in {"width", "both"}
+            else None
+        ),
+        "restricted_widths_m": restricted_widths,
         "restricted_seed": options.restricted_door_seed,
         "restricted_centers_m": [
             {

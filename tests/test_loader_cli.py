@@ -91,8 +91,12 @@ def test_cli_single_and_both_formats(tmp_path) -> None:
             "full-height",
             "--restricted-door-count",
             "1",
+            "--restricted-door-mode",
+            "both",
             "--restricted-door-height",
             "0.75",
+            "--restricted-door-width",
+            "0.35",
             "--restricted-door-seed",
             "17",
             "--window-mode",
@@ -121,7 +125,9 @@ def test_cli_single_and_both_formats(tmp_path) -> None:
     )
     assert metadata["options"]["door_mode"] == "full-height"
     assert metadata["options"]["restricted_door_count"] == 1
+    assert metadata["options"]["restricted_door_mode"] == "both"
     assert metadata["options"]["restricted_door_height"] == 0.75
+    assert metadata["options"]["restricted_door_width"] == 0.35
     assert metadata["options"]["restricted_door_seed"] == 17
     assert metadata["options"]["window_mode"] == "solid"
     assert metadata["options"]["diagonal_corner_percent"] == 25

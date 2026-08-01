@@ -62,14 +62,26 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help=(
             "number of non-boundary interior doors given a separate "
-            "clearance height"
+            "height and/or width restriction"
         ),
+    )
+    parser.add_argument(
+        "--restricted-door-mode",
+        choices=("height", "width", "both"),
+        default="height",
+        help="restrict selected doors by clearance height, opening width, or both",
     )
     parser.add_argument(
         "--restricted-door-height",
         type=float,
         default=1.00,
-        help="clearance height for restricted doors",
+        help="clearance height for height-restricted doors",
+    )
+    parser.add_argument(
+        "--restricted-door-width",
+        type=float,
+        default=0.40,
+        help="centred opening width in metres for width-restricted doors",
     )
     parser.add_argument(
         "--restricted-door-seed",
@@ -163,7 +175,9 @@ def _options(args: argparse.Namespace) -> ExtrusionOptions:
         door_mode=args.door_mode,
         close_boundary_doors=args.close_boundary_doors,
         restricted_door_count=args.restricted_door_count,
+        restricted_door_mode=args.restricted_door_mode,
         restricted_door_height=args.restricted_door_height,
+        restricted_door_width=args.restricted_door_width,
         restricted_door_seed=args.restricted_door_seed,
         window_sill_height=args.window_sill_height,
         window_head_height=args.window_head_height,

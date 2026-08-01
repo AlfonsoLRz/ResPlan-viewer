@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import pickle
+import random
 import tempfile
 from typing import Any, Iterable
 from urllib.request import Request, urlopen
@@ -112,20 +113,50 @@ def select_plans(
     ids: Iterable[int | str] | None = None,
     split: str | None = None,
     all_plans: bool = False,
+    random_count: int | None = None,
+    random_seed: int = 0,
     splits: dict[str, list[Any]] | None = None,
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """Select plans by public dataset ID while preserving requested order."""
-    selectors = sum((ids is not None, split is not None, all_plans))
+    selectors = sum(
+        (ids is not None, split is not None, all_plans, random_count is not None)
+    )
     if selectors != 1:
-        raise ValueError("select exactly one of ids, split, or all_plans")
+        raise ValueError(
+            "select exactly one of ids, split, all_plans, or random_count"
+        )
     if limit is not None and limit <= 0:
         raise ValueError("limit must be greater than zero")
+    if (
+        isinstance(random_seed, bool)
+        or not isinstance(random_seed, int)
+        or random_seed < 0
+    ):
+        raise ValueError("random_seed must be an integer >= 0")
+    if random_count is not None:
+        if (
+            isinstance(random_count, bool)
+            or not isinstance(random_count, int)
+            or random_count <= 0
+        ):
+            raise ValueError("random_count must be an integer greater than zero")
+        if random_count > len(plans):
+            raise ValueError(
+                f"random_count cannot exceed dataset size ({len(plans)})"
+            )
+        if limit is not None:
+            raise ValueError("limit cannot be combined with random_count")
 
     index = {_id_key(plan.get("id")): plan for plan in plans}
     if len(index) != len(plans):
         raise ValueError("dataset contains duplicate plan IDs")
 
+    if random_count is not None:
+        positions = sorted(
+            random.Random(random_seed).sample(range(len(plans)), random_count)
+        )
+        return [plans[position] for position in positions]
     if ids is not None:
         requested = [_id_key(value) for value in ids]
     elif split is not None:

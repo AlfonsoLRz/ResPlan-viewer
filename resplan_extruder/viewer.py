@@ -367,18 +367,43 @@ def main() -> None:
             value=0,
             step=1,
         )
+        restricted_mode_label = st.selectbox(
+            "Restriction method",
+            options=("Narrow width", "Lower height", "Width and height"),
+            disabled=restricted_door_count == 0,
+            help=(
+                "Narrowing restores full-height wall at both sides of the "
+                "door. The combined mode also lowers its vertical clearance."
+            ),
+        )
+        restricted_door_mode = {
+            "Narrow width": "width",
+            "Lower height": "height",
+            "Width and height": "both",
+        }[restricted_mode_label]
+        restrict_width = restricted_door_mode in {"width", "both"}
+        restrict_height = restricted_door_mode in {"height", "both"}
+        restricted_door_width = st.number_input(
+            "Restricted opening width (m)",
+            min_value=0.05,
+            value=0.40,
+            step=0.05,
+            disabled=restricted_door_count == 0 or not restrict_width,
+            help="The remaining opening is centred in each selected doorway.",
+        )
         restricted_door_height = st.number_input(
-            "Restricted clearance (m)",
+            "Restricted clearance height (m)",
             min_value=0.0,
             value=1.00,
             step=0.05,
-            disabled=restricted_door_count == 0,
+            disabled=restricted_door_count == 0 or not restrict_height,
         )
+        if "restricted_door_seed" not in st.session_state:
+            st.session_state["restricted_door_seed"] = 0
         restricted_door_seed = st.number_input(
             "Restricted-door seed",
             min_value=0,
             max_value=MAX_RESTRICTED_DOOR_SEED,
-            value=0,
             step=1,
             disabled=restricted_door_count == 0,
             key="restricted_door_seed",
@@ -453,11 +478,12 @@ def main() -> None:
             step=0.01,
             disabled=noisy_wall_percent == 0,
         )
+        if "geometry_seed" not in st.session_state:
+            st.session_state["geometry_seed"] = 0
         geometry_seed = st.number_input(
             "Geometry seed",
             min_value=0,
             max_value=MAX_RESTRICTED_DOOR_SEED,
-            value=0,
             step=1,
             key="geometry_seed",
         )
@@ -493,7 +519,9 @@ def main() -> None:
         door_mode=door_mode,
         close_boundary_doors=close_boundary_doors,
         restricted_door_count=int(restricted_door_count),
+        restricted_door_mode=restricted_door_mode,
         restricted_door_height=restricted_door_height,
+        restricted_door_width=restricted_door_width,
         restricted_door_seed=int(restricted_door_seed),
         window_sill_height=window_sill,
         window_head_height=window_head,

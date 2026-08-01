@@ -106,7 +106,7 @@ resplan-extrude --ids 14433,14926 --output exports
 resplan-extrude --split test --limit 25 --format both --ceiling
 resplan-extrude --all --format glb --on-error skip
 resplan-extrude --ids 14433 --door-mode full-height --window-mode solid
-resplan-extrude --ids 14433 --close-boundary-doors --restricted-door-count 2 --restricted-door-height 0.65 --restricted-door-seed 17
+resplan-extrude --ids 14433 --close-boundary-doors --restricted-door-count 2 --restricted-door-mode width --restricted-door-width 0.35 --restricted-door-seed 17
 resplan-extrude --ids 14433 --diagonal-corner-percent 20 --curved-wall-percent 15 --noisy-wall-percent 25 --geometry-seed 73
 ```
 
@@ -152,6 +152,9 @@ Door and window treatment can be changed independently:
 - `--window-mode opening` creates the configured sill and header (default).
 - `--window-mode solid` fills each supplied window footprint with full-height
   wall, producing a model without window openings.
+- `--restricted-door-mode width` narrows selected interior openings around
+  their centre; `height` keeps the existing low-clearance behavior, and `both`
+  combines the restrictions.
 
 ```python
 import pickle

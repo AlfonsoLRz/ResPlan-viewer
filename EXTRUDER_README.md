@@ -79,14 +79,15 @@ python -m resplan_extruder.cli `
   --output exports
 ```
 
-Create a robotics-safe perimeter and lower two internal door clearances:
+Create a robotics-safe perimeter and narrow two internal door openings:
 
 ```powershell
 python -m resplan_extruder.cli `
   --ids 14433 `
   --close-boundary-doors `
   --restricted-door-count 2 `
-  --restricted-door-height 0.65 `
+  --restricted-door-mode width `
+  --restricted-door-width 0.35 `
   --restricted-door-seed 17 `
   --output exports
 ```
@@ -197,8 +198,10 @@ override format or classification rule.
 | `--door-mode lintel\|full-height` | `lintel` | Retain wall above doors or leave door footprints open to wall height. |
 | `--door-height METRES` | `2.10` | Top of the door void in `lintel` mode. |
 | `--close-boundary-doors` | off | Fill home entrances and exterior/balcony door footprints with full-height wall. |
-| `--restricted-door-count N` | `0` | Give up to `N` non-boundary interior doors a separate clearance height. |
-| `--restricted-door-height METRES` | `1.00` | Clearance beneath the lintel for restricted doors; used when `N > 0`. |
+| `--restricted-door-count N` | `0` | Restrict up to `N` non-boundary interior doors. |
+| `--restricted-door-mode height\|width\|both` | `height` | Lower clearance, narrow the opening, or apply both changes. |
+| `--restricted-door-height METRES` | `1.00` | Clearance beneath the lintel in `height` or `both` mode. |
+| `--restricted-door-width METRES` | `0.40` | Centred opening width in `width` or `both` mode. |
 | `--restricted-door-seed N` | `0` | Reproducible seed used to choose which eligible interior doors are restricted. |
 
 Door mode behavior:
@@ -228,13 +231,32 @@ home or balcony perimeter. The floor footprint itself is unchanged; use
 `--exclude-balcony` separately when balcony slab geometry should also be
 removed.
 
-Restricted doors provide a lower vertical clearance without closing the
-opening completely:
+Restricted doors can become horizontally narrower, vertically lower, or both.
+For example, keep a centred 0.35 m opening in three selected doorways:
 
 ```powershell
 python -m resplan_extruder.cli `
   --ids 14433 `
   --restricted-door-count 3 `
+  --restricted-door-mode width `
+  --restricted-door-width 0.35 `
+  --restricted-door-seed 17
+```
+
+The width restriction restores full-height wall symmetrically at both ends of
+the original door footprint. It does not scale or move the plan, and it works
+with either normal door mode. If the requested width is not smaller than an
+individual source opening, that opening is left unchanged and metadata records
+a warning.
+
+Use both restrictions together when desired:
+
+```powershell
+python -m resplan_extruder.cli `
+  --ids 14433 `
+  --restricted-door-count 3 `
+  --restricted-door-mode both `
+  --restricted-door-width 0.35 `
   --restricted-door-height 0.60 `
   --restricted-door-seed 17
 ```
@@ -249,22 +271,24 @@ Boundary and front doors are excluded from this selection. If a plan has fewer
 eligible doors than requested, the count is clamped and a warning is written
 to metadata.
 
-Restricted doors override the normal door mode: even when ordinary doors use
-`full-height`, selected restricted doors retain wall from
-`restricted_door_height` to `wall_height`. Set the restricted height below the
-robot's collision height. A value of `0` fills the selected door footprint from
-floor to wall height.
+In `height` or `both` mode, restricted doors override the normal door mode:
+even when ordinary doors use `full-height`, selected restricted doors retain
+wall from `restricted_door_height` to `wall_height`. Set the restricted height
+below the robot's collision height. A height of `0` fills the selected opening
+vertically. In width-only mode, `full-height` doors remain vertically open.
 
-When restricted doors are requested, validation requires:
+For the enabled restriction dimensions, validation requires:
 
 ```text
 0 <= restricted_door_height < wall_height
+restricted_door_width > 0
 ```
 
-The seed, eligible/selected/closed door counts, and modified doors' metric XY
-centers are recorded under `door_treatments` in each plan's `metadata.json`.
-This makes robotics experiments repeatable and lets downstream code identify
-the modified openings.
+The mode, target/effective widths, height, seed, eligible/selected/closed door
+counts, and modified doors' metric XY centers are recorded under
+`door_treatments` in each plan's `metadata.json`. This makes robotics
+experiments repeatable and lets downstream code identify the modified
+openings.
 
 ### Window options
 
@@ -382,6 +406,7 @@ python -m resplan_extruder.cli `
   --close-boundary-doors `
   --door-mode full-height `
   --restricted-door-count 2 `
+  --restricted-door-mode height `
   --restricted-door-height 0.5 `
   --restricted-door-seed 17
 ```
@@ -408,8 +433,8 @@ exports/
 - Effective options and XY scale factor.
 - The fixed 0.20 m plan-scale wall reference, separately from the requested
   physical wall thickness.
-- Normal, restricted, and closed-boundary door counts and modified-door
-  centers.
+- Normal, restricted, and closed-boundary door counts, modified-door centers,
+  and target/effective restricted opening widths.
 - Geometry-variation seed and eligible/applied counts for each effect.
 - Source wall depth and source center.
 - Metric model dimensions.
@@ -478,11 +503,13 @@ model. Buttons download the current model as OBJ or GLB.
 
 Door height is disabled when doors are open to wall height. Window sill and
 head controls are disabled when windows are replaced with solid wall. The
-restricted-height control is disabled when its door count is zero. The
-restricted-seed field and **Randomize restricted doors** button choose a
-different reproducible subset. If every eligible door is already restricted,
-the viewer explains that changing the seed cannot alter the selection. The
-Geometry strength fields are disabled while their percentage is zero, and its
+restriction-method selector offers **Narrow width**, **Lower height**, and
+**Width and height**. Dimension controls that do not apply to the selected
+method are disabled. The restricted-seed field and **Randomize restricted
+doors** button choose a different reproducible subset. If every eligible door
+is already restricted, the viewer explains that changing the seed cannot alter
+the selection. Geometry strength fields are disabled while their percentage is
+zero, and its
 randomizer is disabled until at least one effect is active. The downloaded
 model always uses the settings currently selected in the viewer.
 
@@ -507,6 +534,8 @@ options = ExtrusionOptions(
     door_mode="full-height",
     close_boundary_doors=True,
     restricted_door_count=2,
+    restricted_door_mode="both",
+    restricted_door_width=0.35,
     restricted_door_height=0.65,
     restricted_door_seed=17,
     window_mode="solid",
@@ -622,8 +651,9 @@ For `lintel` doors and `opening` windows, keep the configured heights below the
 wall height. If those structures are not needed, use `--door-mode full-height`
 or `--window-mode solid`.
 
-When restricted doors are enabled, their height must also be below wall height.
-The count is safely clamped when a plan has fewer eligible interior doors.
+When height restriction is enabled, its height must be below wall height. A
+width restriction must be greater than zero. The count is safely clamped when
+a plan has fewer eligible interior doors.
 
 ### Geometry warnings
 

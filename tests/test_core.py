@@ -364,6 +364,71 @@ def test_configurable_restricted_doors_use_alternate_height() -> None:
     assert result.door_treatments["closed_boundary_count"] == 2
 
 
+def test_restricted_door_can_be_narrowed_in_plan_view() -> None:
+    result = extrude_plan(
+        synthetic_plan(),
+        ExtrusionOptions(
+            restricted_door_count=1,
+            restricted_door_mode="width",
+            restricted_door_width=0.30,
+        ),
+    )
+
+    lintel = result.components["restricted_door_lintels"]
+    xy_dimensions = sorted(
+        float(lintel.bounds[1, axis] - lintel.bounds[0, axis])
+        for axis in (0, 1)
+    )
+    assert xy_dimensions == pytest.approx([0.20, 0.30])
+    assert z_bounds(lintel) == pytest.approx((2.10, 2.70))
+    assert result.door_treatments["restricted_mode"] == "width"
+    assert result.door_treatments["restricted_height_m"] is None
+    assert result.door_treatments["restricted_width_m"] == pytest.approx(0.30)
+    assert result.door_treatments["restricted_widths_m"] == [
+        {
+            "original_width_m": pytest.approx(1.0),
+            "effective_width_m": pytest.approx(0.30),
+        }
+    ]
+
+
+def test_width_restriction_works_with_full_height_door_mode() -> None:
+    open_result = extrude_plan(
+        synthetic_plan(), ExtrusionOptions(door_mode="full-height")
+    )
+    narrow_result = extrude_plan(
+        synthetic_plan(),
+        ExtrusionOptions(
+            door_mode="full-height",
+            restricted_door_count=1,
+            restricted_door_mode="width",
+            restricted_door_width=0.30,
+        ),
+    )
+
+    assert "restricted_door_lintels" not in narrow_result.components
+    assert (
+        narrow_result.components["walls"].volume
+        > open_result.components["walls"].volume
+    )
+
+
+def test_restricted_door_can_combine_width_and_height() -> None:
+    result = extrude_plan(
+        synthetic_plan(),
+        ExtrusionOptions(
+            restricted_door_count=1,
+            restricted_door_mode="both",
+            restricted_door_width=0.35,
+            restricted_door_height=0.60,
+        ),
+    )
+    assert z_bounds(result.components["restricted_door_lintels"]) == pytest.approx(
+        (0.60, 2.70)
+    )
+    assert result.door_treatments["restricted_mode"] == "both"
+
+
 def test_restricted_door_count_clamps_to_available_internal_doors() -> None:
     result = extrude_plan(
         robotics_plan(),
@@ -432,6 +497,14 @@ def test_option_validation() -> None:
         ExtrusionOptions(restricted_door_count=-1).validate()
     with pytest.raises(ValueError, match="restricted_door_seed"):
         ExtrusionOptions(restricted_door_seed=-1).validate()
+    with pytest.raises(ValueError, match="restricted_door_mode"):
+        ExtrusionOptions(restricted_door_mode="missing").validate()
+    with pytest.raises(ValueError, match="restricted_door_width"):
+        ExtrusionOptions(
+            restricted_door_count=1,
+            restricted_door_mode="width",
+            restricted_door_width=0,
+        ).validate()
     with pytest.raises(ValueError, match="geometry_seed"):
         ExtrusionOptions(geometry_seed=-1).validate()
     with pytest.raises(ValueError, match="diagonal_corner_percent"):
